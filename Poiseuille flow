@@ -13,16 +13,9 @@ const float rho0 = 1.0;
 double w[Q] = {4.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/36, 1.0/36, 1.0/36, 1.0/36};
 double rho[NX+1][NY+1], u[NX][NY][2];
 int e[Q][2] = {{0,0}, {1,0}, {0,1}, {-1,0}, {0,-1}, {1,1}, {-1,1}, {-1,-1}, {1,-1}};
+double f[NX][NY][Q], ft[NX][NY][Q];
+int isn[NX][NY];
 
-struct Vec {
-    float ex[Q] = {0, 1, 0, -1, 0, 1, -1, -1, 1};
-    float ey[Q] = {0, 0, 1, 0, -1, 1, 1, -1, -1};
-} vec;
-
-
-std::vector<std::vector<std::vector<float>>> f(Q, std::vector<std::vector<float>>(NX, std::vector<float>(NY)));
-std::vector<std::vector<std::vector<float>>> ft(Q, std::vector<std::vector<float>>(NX, std::vector<float>(NY)));
-std::vector<std::vector<int>> isn(NX, std::vector<int>(NY, 0));
 
 void initialize() {
     for (int i = 0; i < NX; i++) {
@@ -31,7 +24,7 @@ void initialize() {
                 isn[i][j] = 1;
             }
             for (int k = 0; k < Q; k++) {
-                f[k][i][j] = w[k] * rho0;
+                f[i][j][k] = w[k] * rho0;
             }
         }
     }
@@ -51,9 +44,9 @@ void collision() {
 
             // Compute macroscopic density and velocity
             for (int k = 0; k < Q; k++) {
-                rho[i][j] += f[k][i][j];
-                localU[0] += f[k][i][j] * e[k][0];
-                localU[1] += f[k][i][j] * e[k][1];
+                rho[i][j] += f[i][j][k];
+                localU[0] += f[i][j][k] * e[k][0];
+                localU[1] += f[i][j][k] * e[k][1];
             }
             localU[0] /= rho[i][j];
             localU[1] /= rho[i][j];
@@ -63,7 +56,7 @@ void collision() {
             for (int k = 0; k < Q; k++) {
                 float feq = computeEquilibrium(k, rho[i][j], localU);
                 float source = (1.0 - 0.5/tau) * w[k] * (3.0 * (e[k][0] - localU[0]) + 9.0 * (e[k][0] * localU[0] + e[k][1] * localU[1]) *e[k][0]) * dpdx;
-                ft[k][i][j] = f[k][i][j] - (f[k][i][j] - feq) / tau + source;
+                ft[i][j][k] = f[i][j][k] - (f[i][j][k] - feq) / tau + source;
             }
         }
     }
@@ -78,7 +71,7 @@ void streaming() {
                 int ja = j + e[k][1] ;
                 if(ia<0){ia=NX-1;}
                 if(ia>NX-1){ia=0;}
-                f[k][ia][ja] = ft[k][i][j];
+                f[ia][ja][k] = ft[i][j][k];
             }
         }
     }
@@ -90,9 +83,9 @@ void writeResults(int ts) {
         float rho = 0;
         float localU[2] = {0, 0};
         for (int k = 0; k < Q; k++) {
-            rho += f[k][NX-1][j];
-            localU[0] += f[k][NX-1][j] * e[k][0];
-            localU[1] += f[k][NX-1][j] * e[k][1];
+            rho += f[NX-1][j][k];
+            localU[0] += f[NX-1][j][k] * e[k][0];
+            localU[1] += f[NX-1][j][k] * e[k][1];
         }
         localU[0] /= rho;
         localU[1] /= rho;
