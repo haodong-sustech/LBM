@@ -1,0 +1,185 @@
+#include"StdAfx.h"
+#include<iostream>
+#include<cmath>
+#include<cstdlib>
+#include<iomanip>
+#include<fstream>
+#include<string>
+
+
+using namespace std;
+const int Q = 9;
+const int NX = 256;
+const int NY = 256;
+const double U = 0.1;
+
+int e[Q][2] = {{0,0}, {1,0}, {0,1}, {-1,0}, {0,-1}, {1,1}, {-1,1}, {-1,-1}, {1,-1}};
+double w[Q] = {4.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/36, 1.0/36, 1.0/36, 1.0/36};
+double rho[NX+1][NY+1], u[NX+1][NY+1][2], u0[NX+1][NY+1][2], f[NX+1][NY+1][Q], F[NX+1][NY+1][Q];
+int i,j,k,ip,jp,n;
+double c, Re, dx, dy, Lx, Ly, dt, rho0, P0, tau_f, niu, error;
+
+void init();
+double feq(int k, double rho, double u[2]);
+void evolution();
+void output(int m);
+void Error();
+
+int main()
+{
+    using namespace std;  //使用标准命名空间
+    init();        //初始化模拟所需的所有参数和变量
+    for(n=0; ; n++)     //一个无限循环，n是迭代次数
+    {
+        evolution();    //执行LBM模拟的主要计算，包括碰撞和流动
+        if(n%500==0)    //每500步执行一次
+        {
+            Error();    //计算并更新模拟的误差
+
+            //输出当前步数，以及网格中心点的速度u和v
+            cout<<"The "<<n<<"the computation result:"<<endl<<"The u, v of point(NX/2, NY/2) is:"
+             <<setprecision(6)<<u[NX/2][NY/2][0]<<","<<u[NX/2][NY/2][1]<<endl;
+            // 输出当前的最大相对误差
+            cout<<"The max relative error of uv is: "<<setiosflags(ios::scientific)<<error<<endl;
+
+         if(n>=2000)     //如果迭代次数达到2000步
+         {
+            if(n%2000==0) output(n); //每2000步输出当前流场的状态到文件
+            if(error<1.0e-4) break; //当误差小于1e-6时，则终止循环
+         }
+        }
+    }
+    return 0;
+}
+
+void init()
+{
+    dx=1.0;
+    dy=1.0;
+    Lx=dx*double(NY);
+    Ly=dy*double(NX);
+    dt=dx;
+    c=dx/dt;
+    rho0=1.0;
+    Re=1000;
+    niu=U*Lx/Re;
+    tau_f=3.0*niu+0.5;
+    std::cout<<"tau_f= "<<tau_f<<endl;
+    
+
+    //初始化
+    for(i=0; i<=NX; i++)  
+        for(j=0; j<=NY; j++)
+        {
+            u[i][j][0]=0;    //速度x方向分量
+            u[i][j][1]=0;    //速度y方向分量
+            rho[i][j]=rho0;  //每个格子密度
+            u[i][NY][0]=U;   //NY边界的x方向速度为U
+            for(k=0;k<Q;k++) //每个格子第k个方向
+            {
+                f[i][j][k]=feq(k, rho[i][j], u[i][j]);
+            }
+        }
+}
+
+//计算平衡态分布函数
+double feq(int k, double rho, double u[2]) 
+{
+    double eu,uv,feq;
+    eu=(e[k][0]*u[0]+e[k][1]*u[1]); //速度方向向量和流体速度向量的点乘
+    uv=(u[0]*u[0]+u[1]*u[1]);       //速度方向向量的模平方
+    feq=w[k]*rho*(1.0+3.0*eu+4.5*eu*eu-1.5*uv);
+    return feq;
+}
+
+//演化, streaming
+void evolution()
+{
+    for(i=1;i<NX;i++)
+     for(j=1;j<NY;j++)
+      for(k=0;k<Q;k++)
+      {
+        ip=i-e[k][0]; //e[k][0]:格子上第k个离散速度向量的x分量
+        jp=j-e[k][1]; //e[k][1]:格子上第k个离散速度向量的y分量
+        F[i][j][k]=f[ip][jp][k]+(feq(k,rho[ip][jp],u[ip][jp])-f[ip][jp][k])/tau_f;
+      }
+             
+
+ //计算宏观量
+ for(i=1; i<NX; i++)
+  for(j=1; j<NY; j++)
+  {
+    u0[i][j][0]=u[i][j][0]; //保存当前的时间步的速度
+    u0[i][j][1]=u[i][j][1];
+    rho[i][j]=0;   //密度初始化
+    u[i][j][0]=0;  //x方向速度初始化
+    u[i][j][1]=0;  //y方向速度初始化
+    for(k=0;k<Q;k++)
+    {
+        f[i][j][k]=F[i][j][k];
+        rho[i][j]+=f[i][j][k];    //计算密度
+        u[i][j][0]+=e[k][0]*f[i][j][k];
+        u[i][j][1]+=e[k][1]*f[i][j][k];
+    }
+    u[i][j][0]/=rho[i][j]; //计算x方向的速度
+    u[i][j][1]/=rho[i][j]; //计算y方向的速度
+  }
+
+
+ //边界处理
+ for(j=1;j<NY;j++)       //左右边界
+  for(k=0;k<Q;k++)
+  {
+    rho[NX][j]=rho[NX-1][j]; //假设 (NX, j)格子的密度与(NX-1, j)格子相等
+    f[NX][j][k]=feq(k,rho[NX][j], u[NX][j])+
+    f[NX-1][j][k]-feq(k,rho[NX-1][j],u[NX-1][j]); //计算(NX, j)格子k方向的分布函数
+
+    rho[0][j]=rho[1][j]; //假设 (0, j)格子的密度与(1, j)格子相等
+    f[0][j][k]=feq(k,rho[0][j],u[0][j])+f[1][j][k]-feq(k,rho[1][j],u[1][j]);
+    //计算(0, j)格子k方向的分布函数
+  }
+
+  for(i=0;i<=NX;i++)    //上下边界
+   for(k=0;k<Q;k++)
+   {
+    rho[i][0]=rho[i][1]; //假设 (i, 0)格子的密度与(i, 1)格子相等
+    f[i][0][k]=feq(k,rho[i][0],u[i][0])+f[i][1][k]-feq(k,rho[i][1],u[i][1]); 
+    //计算(i, 0)格子k方向的分布函数
+
+    rho[i][NY]=rho[i][NY-1]; //假设 (i, NY)格子的密度与(i, NY-1)格子相等
+    u[i][NY][0]=U; //设置边界的水平速度分量（流入速度）
+    f[i][NY][k]=feq(k,rho[i][NY],u[i][NY])+f[i][NY-1][k]-feq(k,rho[i][NY-1],u[i][NY-1]);
+    //计算(i, NY)格子k方向的分布函数
+   }
+}
+
+//输出
+void output(int m)
+{
+    ostringstream name;
+    name<<"cavity_"<<m<<".dat";
+    ofstream out(name.str().c_str());
+    out<<"Title=\"LBM\"\n"<<endl;
+    for(j=0;j<=NY;j++)
+     for(i=0;i<=NX;i++)
+     {
+        out<<double(i)/Lx<<" "<<double(j)/Ly<<" "<<u[i][j][0]<<" "<<u[i][j][1]<<endl;
+     }
+}
+
+void Error()
+{
+    double temp1, temp2;
+    temp1=0;
+    temp2=0;
+    for(i=0;i<NX;i++)
+     for(j=1;j<NY;j++)
+     {
+        temp1+=((u[i][j][0]-u0[i][j][0])*(u[i][j][0]-u0[i][j][0])+
+        (u[i][j][1]-u0[i][j][1])*(u[i][j][1]-u0[i][j][1]));
+        temp2+=(u[i][j][0]*u[i][j][0]+u[i][j][1]*u[i][j][1]);
+     }
+    temp1=sqrt(temp1);
+    temp2=sqrt(temp2);
+    error=temp1/(temp2+1e-30);
+}
