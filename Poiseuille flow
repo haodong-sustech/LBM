@@ -1,0 +1,114 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <fstream>
+#include <iomanip>
+
+const int Q = 9;
+const int NX = 201;
+const int NY = 21;
+const float dpdx = 1.0e-5;
+const float tau = 0.8;
+const float rho0 = 1.0;
+double w[Q] = {4.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/9, 1.0/36, 1.0/36, 1.0/36, 1.0/36};
+double rho[NX+1][NY+1], u[NX][NY][2];
+int e[Q][2] = {{0,0}, {1,0}, {0,1}, {-1,0}, {0,-1}, {1,1}, {-1,1}, {-1,-1}, {1,-1}};
+
+struct Vec {
+    float ex[Q] = {0, 1, 0, -1, 0, 1, -1, -1, 1};
+    float ey[Q] = {0, 0, 1, 0, -1, 1, 1, -1, -1};
+} vec;
+
+
+std::vector<std::vector<std::vector<float>>> f(Q, std::vector<std::vector<float>>(NX, std::vector<float>(NY)));
+std::vector<std::vector<std::vector<float>>> ft(Q, std::vector<std::vector<float>>(NX, std::vector<float>(NY)));
+std::vector<std::vector<int>> isn(NX, std::vector<int>(NY, 0));
+
+void initialize() {
+    for (int i = 0; i < NX; i++) {
+        for (int j = 0; j < NY; j++) {
+            if (j == 0 || j == NY - 1) {
+                isn[i][j] = 1;
+            }
+            for (int k = 0; k < Q; k++) {
+                f[k][i][j] = w[k] * rho0;
+            }
+        }
+    }
+}
+
+float computeEquilibrium(int k, float rho, float u[2]) {
+    float eu = e[k][0]*u[0] + e[k][1]*u[1];
+    float u2 = u[0]*u[0]+ u[1]*u[1];
+    return w[k] * rho * (1.0 + 3.0 * eu + 4.5 * eu * eu - 1.5 * u2);
+}
+
+void collision() {
+    for (int i = 0; i < NX; i++) {
+        for (int j = 1; j < NY - 1; j++) {
+            rho[i][j] = 0;
+            float localU[2] = {0, 0};  // Local velocity vector
+
+            // Compute macroscopic density and velocity
+            for (int k = 0; k < Q; k++) {
+                rho[i][j] += f[k][i][j];
+                localU[0] += f[k][i][j] * e[k][0];
+                localU[1] += f[k][i][j] * e[k][1];
+            }
+            localU[0] /= rho[i][j];
+            localU[1] /= rho[i][j];
+            localU[0] += dpdx / (2.0 * rho[i][j]);  // Adjust x-velocity component
+
+            // Collision step
+            for (int k = 0; k < Q; k++) {
+                float feq = computeEquilibrium(k, rho[i][j], localU);
+                float source = (1.0 - 0.5/tau) * w[k] * (3.0 * (e[k][0] - localU[0]) + 9.0 * (e[k][0] * localU[0] + e[k][1] * localU[1]) *e[k][0]) * dpdx;
+                ft[k][i][j] = f[k][i][j] - (f[k][i][j] - feq) / tau + source;
+            }
+        }
+    }
+}
+
+
+void streaming() {
+    for (int i = 0; i < NX; i++) {
+        for (int j = 1; j < NY - 1; j++) {
+            for (int k = 0; k < Q; k++) {
+                int ia = i + e[k][0] ;
+                int ja = j + e[k][1] ;
+                if(ia<0){ia=NX-1;}
+                if(ia>NX-1){ia=0;}
+                f[k][ia][ja] = ft[k][i][j];
+            }
+        }
+    }
+}
+
+void writeResults(int ts) {
+    std::ofstream out("ux_prof_" + std::to_string(ts) + ".dat");
+    for (int j = 0; j < NY; j++) {
+        float rho = 0;
+        float localU[2] = {0, 0};
+        for (int k = 0; k < Q; k++) {
+            rho += f[k][NX-1][j];
+            localU[0] += f[k][NX-1][j] * e[k][0];
+            localU[1] += f[k][NX-1][j] * e[k][1];
+        }
+        localU[0] /= rho;
+        localU[1] /= rho;
+        out << NX - 1 << " " << j << " " << localU[0] << " " << localU[1] << " " << rho << "\n";
+    }
+    out.close();
+}
+
+int main() {
+    initialize();
+    for (int ts = 1; ts <= 20000; ts++) {
+        collision();
+        streaming();
+        if (ts % 1000 == 0) {
+            writeResults(ts);
+        }
+    }
+    return 0;
+}
