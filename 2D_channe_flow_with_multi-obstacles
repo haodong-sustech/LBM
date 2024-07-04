@@ -1,0 +1,300 @@
+% Main.m
+%LBM- 2-D2Q9, Flow in a channel with step, note that c2=1/3, w9=4/9,
+% w1-4=1/9, and w5-w8, 1/36
+clear
+nx=501;ny=81;
+f=zeros(nx,ny,9);feq=zeros(nx,ny,9);
+u=zeros(nx,ny);v=zeros(nx,ny);
+rho=ones(nx,ny);x=zeros(nx);y=zeros(ny);
+Tm=zeros(nx);w(9)=zeros; Tvm=zeros(nx);
+w=[1/9 1/9 1/9 1/9 1/36 1/36 1/36 1/36 4/9];
+cx = [1 0 -1 0 1 -1 -1 1 0];
+cy = [0 1 0 -1 1 1 -1 -1 0];
+c2=1./3.;
+dx=1.0;dy=1.0;
+xl=(nx-1)/(ny-1); yl=1.0;
+dx=xl/(nx-1);
+dy=yl/(ny-1);
+x=(0:dx:xl);
+y=(0:dy:yl);
+uo=0.1;
+alpha=0.01;
+Re=uo*(ny-1)/alpha
+omega=1./(3.*alpha+0.5);
+count=0; tol=1.0e-4; error=10.;erso=0.0;
+%setting velocity
+for j=2:ny-1
+u(1,j)=uo;
+end
+%Main Loop
+while error>tol
+% Collitions
+[f]=collition(nx,ny,u,v,cx,cy,omega,f,rho,w);
+% Streaming:
+[f]=stream(f);
+% End of streaming
+%Boundary condition:
+[f]=boundary(nx,ny,f,uo,rho);
+%Obsticale
+[f]=obstc(nx,ny,f,uo,rho);
+% Calculate rho, u, v
+[rho,u,v]=ruv(nx,ny,f);
+count=count+1;
+ers=0.;
+for i =1:nx
+for j=1:ny
+ers=ers+u(i,j)*u(i,j)+v(i,j)*v(i,j);
+end
+end
+error=abs(ers-erso);
+erso=ers;
+end
+%Plotting data
+result(nx,ny,x,y,u,v,uo,rho);
+%Boudary conditions for Channel flow
+function [f]=boundary(nx,ny,f,uo,rho)
+%right hand boundary
+for j=1:ny
+f(nx,j,3)=f(nx-1,j,3);
+f(nx,j,7)=f(nx-1,j,7);
+f(nx,j,6)=f(nx-1,j,6);
+end
+%bottom, and top boundary, bounce back
+for i=1:nx
+f(i,1,2)=f(i,1,4);
+f(i,1,5)=f(i,1,7);
+f(i,1,6)=f(i,1,8);
+f(i,ny,4)=f(i,ny,2);
+f(i,ny,7)=f(i,ny,5);
+f(i,ny,8)=f(i,ny,6);
+u(i,1)=0.0; v(i,1)=0.0;
+u(i,ny)=0.0; v(i,ny)=0.0;
+end
+%Left boundary, velocity is given= uo
+for j=2:ny-1
+f(1,j,1)=f(1,j,3)+2.*rho(1,j)*uo/3.;
+f(1,j,5)=f(1,j,7)-0.5*(f(1,j,2)-f(1,j,4))+rho(1,j)*uo/6.;
+f(1,j,8)=f(1,j,6)+0.5*(f(1,j,2)-f(1,j,4))+rho(1,j)*uo/6.;
+u(1,j)=uo; v(1,j)=0.0;
+end
+% End of boundary conditions.
+end
+
+% Collition
+function [f]=collition(nx,ny,u,v,cx,cy,omega,f,rho,w)
+for j=1:ny
+for i=1:nx
+t1=u(i,j)*u(i,j)+v(i,j)*v(i,j);
+for k=1:9
+t2=u(i,j)*cx(k)+v(i,j)*cy(k);
+feq(i,j,k)=rho(i,j)*w(k)*(1.0+3.0*t2+4.5*t2*t2-1.5*t1);
+f(i,j,k)=(1.-omega)*f(i,j,k)+omega*feq(i,j,k);
+end
+end
+end
+end
+
+%Obsticale replace at the entrance, Back Fase Flow
+function [f]=obstc(nx,ny,f,uo,rho)
+%length of obsticale= nx/4, heigh ny/2
+n1xw=(nx-1)/5-50;
+n1xe=n1xw+50;
+n2xw=(nx-1)/5+100;
+n2xe=n2xw+50;
+n3xw=(nx-1)/5+100;
+n3xe=n3xw+50;
+n4xw=(nx-1)/5+250;
+n4xe=n4xw+50;
+
+n1ys=(ny-1)/4+15;
+n1yn=n1ys+10;
+n2ys=(ny-1)/4+35;
+n2yn=n2ys+10;
+n3ys=(ny-1)/4-5;
+n3yn=n3ys+10;
+n4ys=(ny-1)/4+15;
+n4yn=n4ys+10;
+
+for i=n1xw:n1xe
+f(i,n1yn,2)=f(i,n1yn,4);
+f(i,n1yn,5)=f(i,n1yn,7);
+f(i,n1yn,6)=f(i,n1yn,8);
+f(i,n1ys,4)=f(i,n1ys,2);
+f(i,n1ys,7)=f(i,n1ys,5);
+f(i,n1ys,8)=f(i,n1ys,6);
+end
+%bottom, and top boundary, bounce back
+for j=n1ys:n1yn
+f(n1xw,j,3)=f(n1xw,j,1);
+f(n1xw,j,6)=f(n1xw,j,8);
+f(n1xw,j,7)=f(n1xw,j,5);
+f(n1xe,j,1)=f(n1xe,j,3);
+f(n1xe,j,5)=f(n1xe,j,7);
+f(n1xe,j,8)=f(n1xe,j,6);
+
+end
+for i=n1xw:n1xe
+for j=n1ys:n1yn
+u(i,j)=0.0;
+v(i,j)=0.0;
+end
+end
+
+for i=n2xw:n2xe
+f(i,n2yn,2)=f(i,n2yn,4);
+f(i,n2yn,5)=f(i,n2yn,7);
+f(i,n2yn,6)=f(i,n2yn,8);
+f(i,n2ys,4)=f(i,n2ys,2);
+f(i,n2ys,7)=f(i,n2ys,5);
+f(i,n2ys,8)=f(i,n2ys,6);
+end
+%bottom, and top boundary, bounce back
+for j=n2ys:n2yn
+f(n2xw,j,3)=f(n2xw,j,1);
+f(n2xw,j,6)=f(n2xw,j,8);
+f(n2xw,j,7)=f(n2xw,j,5);
+f(n2xe,j,1)=f(n2xe,j,3);
+f(n2xe,j,5)=f(n2xe,j,7);
+f(n2xe,j,8)=f(n2xe,j,6);
+end
+for i=n2xw:n2xe
+for j=n2ys:n2yn
+u(i,j)=0.0;
+v(i,j)=0.0;
+end
+end
+
+for i=n3xw:n3xe
+f(i,n3yn,2)=f(i,n3yn,4);
+f(i,n3yn,5)=f(i,n3yn,7);
+f(i,n3yn,6)=f(i,n3yn,8);
+f(i,n3ys,4)=f(i,n3ys,2);
+f(i,n3ys,7)=f(i,n3ys,5);
+f(i,n3ys,8)=f(i,n3ys,6);
+end
+%bottom, and top boundary, bounce back
+for j=n3ys:n3yn
+f(n3xw,j,3)=f(n3xw,j,1);
+f(n3xw,j,6)=f(n3xw,j,8);
+f(n3xw,j,7)=f(n3xw,j,5);
+f(n3xe,j,1)=f(n3xe,j,3);
+f(n3xe,j,5)=f(n3xe,j,7);
+f(n3xe,j,8)=f(n3xe,j,6);
+end
+for i=n3xw:n3xe
+for j=n3ys:n3yn
+u(i,j)=0.0;
+v(i,j)=0.0;
+end
+end
+
+for i=n4xw:n4xe
+f(i,n4yn,2)=f(i,n4yn,4);
+f(i,n4yn,5)=f(i,n4yn,7);
+f(i,n4yn,6)=f(i,n4yn,8);
+f(i,n4ys,4)=f(i,n4ys,2);
+f(i,n4ys,7)=f(i,n4ys,5);
+f(i,n4ys,8)=f(i,n4ys,6);
+end
+%bottom, and top boundary, bounce back
+for j=n4ys:n4yn
+f(n4xw,j,3)=f(n4xw,j,1);
+f(n4xw,j,6)=f(n4xw,j,8);
+f(n4xw,j,7)=f(n4xw,j,5);
+f(n4xe,j,1)=f(n4xe,j,3);
+f(n4xe,j,5)=f(n4xe,j,7);
+f(n4xe,j,8)=f(n4xe,j,6);
+end
+for i=n4xw:n4xe
+for j=n4ys:n4yn
+u(i,j)=0.0;
+v(i,j)=0.0;
+end
+end
+% End
+end
+
+% Plots for channel flow
+function result(nx,ny,x,y,u,v,uo,rho)
+n1xw=(nx-1)/5-50;
+n1xe=n1xw+50;
+n2xw=(nx-1)/5+100;
+n2xe=n2xw+50;
+n3xw=(nx-1)/5+100;
+n3xe=n3xw+50;
+n4xw=(nx-1)/5+250;
+n4xe=n4xw+50;
+
+n1ys=(ny-1)/4+15;
+n1yn=n1ys+10;
+n2ys=(ny-1)/4+35;
+n2yn=n2ys+10;
+n3ys=(ny-1)/4-5;
+n3yn=n3ys+10;
+n4ys=(ny-1)/4+15;
+n4yn=n4ys+10;
+
+for i=n1xw:n1xe
+for j=n1ys:n1yn
+u(i,j)=0.0;
+v(i,j)=0.0;
+end
+end
+
+for i=n2xw:n2xe
+for j=n2ys:n2yn
+u(i,j)=0.0;
+v(i,j)=0.0;
+end
+end
+
+for i=n3xw:n3xe
+for j=n3ys:n3yn
+u(i,j)=0.0;
+v(i,j)=0.0;
+end
+end
+
+for i=n4xw:n4xe
+for j=n4ys:n4yn
+u(i,j)=0.0;
+v(i,j)=0.0;
+end
+end
+% Calculate the speed at each grid point
+speed = sqrt(u.^2 + v.^2);
+    
+% Create a grid for plotting
+[X, Y] = meshgrid(x, y);
+    
+% Plot contour of the speed
+% figure
+contourf(X, Y, speed', 10); % using contourf for filled contour plot
+colorbar; % adds a color bar to indicate the speed magnitude
+xlabel('X');
+ylabel('Y');
+title('Velocity Magnitude Contours');
+end
+
+function[rho,u,v]=ruv(nx,ny,f)
+rho=sum (f,3);
+for i=1:nx
+rho(i,ny)=f(i,ny,9)+f(i,ny,1)+f(i,ny,3)+2.*(f(i,ny,2)+f(i,ny,6)+f(i,ny,5));
+end
+%calculate velocity compnents
+u = ( sum(f(:,:,[1 5 8]),3) - sum(f(:,:,[3 6 7]),3) )./rho;
+v = ( sum(f(:,:,[2 5 6]),3) - sum(f(:,:,[4 7 8]),3) )./rho;
+end
+
+% Streaming:
+function [f]=stream(f)
+f(:,:,1)=circshift( squeeze(f(:,:,1)), [+1,+0] );
+f(:,:,2)=circshift( squeeze(f(:,:,2)), [+0,+1] );
+f(:,:,3)=circshift( squeeze(f(:,:,3)), [-1,+0] );
+f(:,:,4)=circshift( squeeze(f(:,:,4)), [+0,-1] );
+f(:,:,5)=circshift( squeeze(f(:,:,5)), [+1,+1] );
+f(:,:,6)=circshift( squeeze(f(:,:,6)), [-1,+1] );
+f(:,:,7)=circshift( squeeze(f(:,:,7)), [-1,-1] );
+f(:,:,8)=circshift( squeeze(f(:,:,8)), [+1,-1] );
+end
+% End of streaming
